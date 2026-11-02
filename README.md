@@ -9,6 +9,7 @@ It's also my first substantial C++ project, so it probably has some structural/c
 ## Building
 
 `cmake -DCMAKE_BUILD_TYPE=Release -B build --fresh`
+
 `cmake --build build -j`
 
 If you're on Windows...idk gl
@@ -16,4 +17,5 @@ If you're on Windows...idk gl
 ## Running
 
 `cd build`
+
 `./mbdnes`
