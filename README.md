@@ -10,6 +10,12 @@ Here's how it fares on [AccuracyCoin](https://github.com/100thCoin/AccuracyCoin)
 
 ![Screenshot of the AccuracyCoin test suite results page](./img/accuracy.png)
 
+And blargg's [all_instrs](https://github.com/christopherpow/nes-test-roms/tree/master/instr_test-v5):
+
+![Screenshot of blargg's all_instrs.nes test success](./img/all_instrs.png)
+
+And I'm sure it does ok on most things; go download some [test ROMs](https://github.com/christopherpow/nes-test-roms) and find out idk
+
 ## Building
 
 ### Prerequisites
