@@ -1,0 +1,6 @@
+# cmake
+/build/
+compile_commands.json
+
+# tests
+*_test.cpp
