@@ -20,7 +20,7 @@ And I'm sure it does ok on most things; go download some [test ROMs](https://git
 
 ### Prerequisites
 
-You'll probalby need SDL2 installed somewhere. And cmake.
+You'll probably need SDL2 installed somewhere. And cmake.
 
 
 ### Commands 
