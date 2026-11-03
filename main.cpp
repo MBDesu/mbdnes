@@ -14,6 +14,8 @@
 
 namespace fs = std::filesystem;
 
+// TODO: clean this up; several things belong in Platform, several things
+// can be abstracted, and none of it is pretty
 int main() {
   Platform platform{"mbdnes", 1280, 960, 256, 240};
   CPUMemory cpuMemory{};
@@ -258,6 +260,8 @@ int main() {
         cpu->dumpExecutionHistory();
         platform.m_isPaused = true;
       }
+    } else {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
     platform.Update(frameBuffer.data(), 256 * sizeof(u32), cpu);

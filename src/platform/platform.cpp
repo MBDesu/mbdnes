@@ -1,5 +1,7 @@
 #include "platform/platform.h"
 #include "apu/apu.h"
+#include "cpu/disassembler.h"
+#include "cpu/operations.h"
 #include "imgui.h"
 #include "ppu/ppu.h"
 #include <SDL2/SDL_audio.h>
@@ -29,6 +31,7 @@ void Platform::Update(void const *buffer, int pitch, std::shared_ptr<CPU> cpu) {
     drawCpuState(cpu);
     drawMemoryInspector(cpu);
     drawAudioWaves(cpu->memory().m_apu, m_lastAudioFrame);
+    drawCpuDisassembler(cpu);
   }
   ImGui::Render();
   ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), renderer);
@@ -215,11 +218,9 @@ void Platform::drawCpuState(std::shared_ptr<CPU> cpu) {
   ImGui::SeparatorText("Flags");
   auto drawFlag = [](const char *name, bool status) {
     if (status) {
-      ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "[%s]",
-                         name); // Active (Green)
+      ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "[%s]", name);
     } else {
-      ImGui::TextColored(ImVec4(0.4f, 0.4f, 0.4f, 1.0f), "[%s]",
-                         name); // Inactive (Gray)
+      ImGui::TextColored(ImVec4(0.4f, 0.4f, 0.4f, 1.0f), "[%s]", name);
     }
     if (*name != 'C')
       ImGui::SameLine();
@@ -427,5 +428,141 @@ void Platform::drawAudioWaves(std::shared_ptr<APU> apu,
   drawFrameScope("DMC", frameAudio.dmc, ImVec4(0.8f, 0.4f, 0.8f, 1.0f),
                  &m_muteDmc);
 
+  ImGui::End();
+}
+
+void Platform::drawCpuDisassembler(std::shared_ptr<CPU> cpu) {
+  ImGui::Begin("mbdnes CPU Disassembler", nullptr, ImGuiWindowFlags_None);
+
+  static bool trackPC = true;
+  ImGui::Checkbox("Auto-scroll to PC", &trackPC);
+  ImGui::Separator();
+
+  if (!m_disasmCacheValid || m_disasmAddresses.empty()) {
+    m_disasmAddresses.clear();
+    int scanAddr = 0;
+    while (scanAddr < 65536) {
+      m_disasmAddresses.push_back(static_cast<u16>(scanAddr));
+      u8 opc = cpu->memory().read(scanAddr);
+      u8 size = OPERATIONS[opc].addressingMode
+                    ? OPERATIONS[opc].addressingMode->m_inputSize
+                    : 0;
+      scanAddr += 1 + size;
+    }
+    m_disasmCacheValid = true;
+  }
+
+  ImGui::BeginChild("VirtualizedDisassemblyGrid", ImVec2(0, 0), true,
+                    ImGuiWindowFlags_HorizontalScrollbar);
+
+  ImGuiListClipper clipper;
+  clipper.Begin(static_cast<int>(m_disasmAddresses.size()),
+                ImGui::GetTextLineHeightWithSpacing());
+
+  u16 currentPC = cpu->m_pc.getContent();
+
+  int pcIndex = -1;
+  if (trackPC) {
+    for (size_t i = 0; i < m_disasmAddresses.size(); ++i) {
+      if (m_disasmAddresses[i] == currentPC) {
+        pcIndex = static_cast<int>(i);
+        break;
+      }
+    }
+    if (pcIndex != -1) {
+      ImGui::SetScrollFromPosY(
+          ImGui::GetCursorStartPos().y +
+              (pcIndex * ImGui::GetTextLineHeightWithSpacing()),
+          0.5f);
+    }
+  }
+
+  ImDrawList *drawList = ImGui::GetWindowDrawList();
+
+  while (clipper.Step()) {
+    for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
+      u16 targetAddr = m_disasmAddresses[i];
+      u8 opcode = cpu->memory().read(targetAddr);
+      const auto &op = OPERATIONS[opcode];
+
+      bool isCurrentPC = (targetAddr == currentPC);
+      bool isBreakpoint = (m_breakpointAddress == static_cast<int>(targetAddr));
+
+      if (isCurrentPC || isBreakpoint) {
+        ImVec2 posMin = ImGui::GetCursorScreenPos();
+        float rowWidth = ImGui::GetContentRegionAvail().x;
+        float rowHeight = ImGui::GetTextLineHeight();
+        ImVec2 posMax = ImVec2(posMin.x + rowWidth, posMin.y + rowHeight);
+
+        if (isBreakpoint) {
+          drawList->AddRectFilled(posMin, posMax, IM_COL32(255, 50, 50, 80));
+        }
+        if (isCurrentPC) {
+          drawList->AddRectFilled(posMin, posMax, IM_COL32(50, 255, 50, 60));
+        }
+      }
+
+      if (isCurrentPC) {
+        ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f),
+                           "=> $%04X: ", targetAddr);
+      } else if (isBreakpoint) {
+        ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f),
+                           " B  $%04X: ", targetAddr);
+      } else {
+        ImGui::TextColored(ImVec4(0.4f, 0.7f, 1.0f, 1.0f),
+                           "    $%04X: ", targetAddr);
+      }
+      ImGui::SameLine();
+
+      u16 operandValue = 0;
+      u8 size = 0;
+      if (op.addressingMode) {
+        size = op.addressingMode->m_inputSize;
+        if (size == 1) {
+          operandValue = cpu->memory().read(targetAddr + 1);
+        } else if (size == 2) {
+          u16 low = cpu->memory().read(targetAddr + 1);
+          u16 high = cpu->memory().read(targetAddr + 2);
+          operandValue = (high << 8) | low;
+        }
+      }
+
+      if (size == 0) {
+        ImGui::TextDisabled("%02X       ", opcode);
+      } else if (size == 1) {
+        ImGui::TextDisabled("%02X %02X    ", opcode,
+                            static_cast<u8>(operandValue & 0xFF));
+      } else {
+        ImGui::TextDisabled("%02X %02X %02X ", opcode,
+                            static_cast<u8>(operandValue & 0xFF),
+                            static_cast<u8>(operandValue >> 8));
+      }
+      ImGui::SameLine();
+
+      char disassemblyBuffer[64] = {0};
+      disassembleInstructionTo(disassemblyBuffer, opcode, operandValue,
+                               targetAddr);
+
+      ImGui::Text("%s", disassemblyBuffer);
+
+      if (ImGui::IsItemHovered() ||
+          (ImGui::IsWindowHovered() &&
+           ImGui::IsMouseHoveringRect(ImGui::GetItemRectMin(),
+                                      ImGui::GetItemRectMax()))) {
+        ImGui::SetTooltip("Click row to toggle execution breakpoint at $%04X",
+                          targetAddr);
+        if (ImGui::IsMouseClicked(0)) {
+          if (m_breakpointAddress == static_cast<int>(targetAddr)) {
+            m_breakpointAddress = -1;
+          } else {
+            m_breakpointAddress = static_cast<int>(targetAddr);
+          }
+        }
+      }
+    }
+  }
+  clipper.End();
+
+  ImGui::EndChild();
   ImGui::End();
 }

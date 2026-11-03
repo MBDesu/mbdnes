@@ -169,12 +169,15 @@ private:
   SDL_Texture *texture{};
   InputManager m_inputManager;
   FrameAudioCapture m_lastAudioFrame;
+  std::vector<u16> m_disasmAddresses;
+  bool m_disasmCacheValid = false;
 
   void drawObjectMemory(std::shared_ptr<CPU> cpu);
   void drawNametable(std::shared_ptr<CPU> cpu);
   void drawCpuState(std::shared_ptr<CPU> cpu);
   void drawMemoryInspector(std::shared_ptr<CPU> cpu);
   void drawAudioWaves(std::shared_ptr<APU> apu, FrameAudioCapture &frameAudio);
+  void drawCpuDisassembler(std::shared_ptr<CPU> cpu);
 };
 
 #endif // MODULE_PLATFORM_H
